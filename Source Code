@@ -1,0 +1,135 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import csv
+import os
+
+# Parameter
+alpha = 0.1
+gamma = 0.9
+epsilon = 0.1
+total_episodes = 1000
+episodes_per_run = 100
+grid_size = 20
+
+# State and Action spaces
+states = [(x, y) for x in range(grid_size) for y in range(grid_size)]
+actions = ['up', 'down', 'left', 'right']
+
+# Initialize Q-table
+Q = {(state, action): 0 for state in states for action in actions}
+
+# Define reward function
+def reward(state):
+    if state == (19, 19):
+        return 10
+    elif state in [(5, 5), (5, 10), (10, 10), (15, 15), (5, 15), (15, 5)]:
+        return -10
+    else:
+        return -1
+
+# Define next state function
+def next_state(state, action):
+    x, y = state
+    if action == 'up':
+        y = min(y + 1, grid_size - 1)
+    elif action == 'down':
+        y = max(y - 1, 0)
+    elif action == 'left':
+        x = max(x - 1, 0)
+    elif action == 'right':
+        x = min(x + 1, grid_size - 1)
+    return (x, y)
+
+# Load Q-table from CSV file if exists
+def load_q_table(filename="q_table.csv"):
+    if os.path.exists(filename):
+        with open(filename, mode='r') as file:
+            reader = csv.reader(file)
+            next(reader)  # skip header
+            for row in reader:
+                state = tuple(map(int, row[0].strip("()").split(',')))
+                action = row[1]
+                q_value = float(row[2])
+                Q[(state, action)] = q_value
+
+# Save Q-table to CSV file
+def save_q_table(filename="q_table.csv"):
+    with open(filename, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["State", "Action", "Q-value"])
+        for state_action, q_value in Q.items():
+            state, action = state_action
+            writer.writerow([state, action, q_value])
+
+# Q-Learning algorithm
+def q_learning(episodes):
+    for episode in range(episodes):
+        state = (0, 0)
+        while state != (19, 19):
+            if np.random.rand() < epsilon:
+                action = np.random.choice(actions)
+            else:
+                action = max(actions, key=lambda a: Q[(state, a)])
+
+            new_state = next_state(state, action)
+            r = reward(new_state)
+            Q[(state, action)] += alpha * (r + gamma * max(Q[(new_state, a)] for a in actions) - Q[(state, action)])
+            state = new_state
+
+# Run Q-Learning in batches to limit memory usage
+load_q_table()
+for _ in range(total_episodes // episodes_per_run):
+    q_learning(episodes_per_run)
+    save_q_table()
+
+# Extract the optimal policy
+policy = {}
+for state in states:
+    policy[state] = max(actions, key=lambda a: Q[(state, a)])
+
+# Visualization of the grid, obstacles, and path
+def plot_grid_policy_with_path(policy, grid_size):
+    grid = np.zeros((grid_size, grid_size), dtype=str)
+    path = [(0, 0)]
+    state = (0, 0)
+
+    while state != (19, 19):
+        action = policy[state]
+        state = next_state(state, action)
+        path.append(state)
+
+    for state in states:
+        x, y = state
+        action = policy[state]
+        if (x, y) in [(5, 5), (5, 10), (10, 10), (15, 15), (5, 15), (15, 5)]:
+            grid[x, y] = 'X'  # obstacle
+        elif (x, y) == (0, 0):
+            grid[x, y] = 'S'  # start
+        elif (x, y) == (19, 19):
+            grid[x, y] = 'G'  # goal
+        else:
+            if action == 'up':
+                grid[x, y] = '^'
+            elif action == 'down':
+                grid[x, y] = 'v'
+            elif action == 'left':
+                grid[x, y] = '<'
+            elif action == 'right':
+                grid[x, y] = '>'
+
+    plt.figure(figsize=(10, 10))
+    for i in range(grid_size):
+        for j in range(grid_size):
+            plt.text(j, i, grid[i, j], ha='center', va='center', color='red')
+
+    # Plot the path
+    path_x, path_y = zip(*path)
+    plt.plot(path_y, path_x, marker='o', color='blue', markersize=5, linestyle='-', linewidth=2)
+
+    plt.xlim(-0.5, grid_size - 0.5)
+    plt.ylim(-0.5, grid_size - 0.5)
+    plt.gca().invert_yaxis()
+    plt.grid()
+    plt.show()
+
+plot_grid_policy_with_path(policy, grid_size)
